@@ -3,15 +3,6 @@ import { getEvents, getEvent, saveEvent, deleteEvent, getContact, getContactsByE
 import { html, esc, tierClass, tierLabel, initials, companyInitials, setNav } from './render.js';
 import { parseXLSX, parseCSV, fetchGoogleSheet } from './xlsx-parser.js';
 
-let SEED_DATA = null;
-async function getSeedData() {
-  if (!SEED_DATA) {
-    const resp = await fetch('./data/seed.json');
-    SEED_DATA = await resp.json();
-  }
-  return SEED_DATA;
-}
-
 // Bottom nav (persistent)
 function renderNav() {
   const nav = document.createElement('nav');
@@ -46,13 +37,9 @@ route('/', async (params, app) => {
         <div style="margin-top:12px">
           <button class="btn btn-secondary" id="connect-sheet">Connect Google Sheet</button>
         </div>
-        <div style="margin-top:12px">
-          <button class="btn btn-secondary" id="load-demo" style="font-size:13px;opacity:0.7">Load demo data</button>
-        </div>
       </div>`;
     document.getElementById('create-first').onclick = () => showEventModal();
     document.getElementById('connect-sheet').onclick = () => showGoogleSheetModal();
-    document.getElementById('load-demo').onclick = loadDemoData;
     return;
   }
 
@@ -687,18 +674,6 @@ function showImportModal(eventId) {
       console.error(e);
     }
   }
-}
-
-// ─── Demo Data Loader ───
-async function loadDemoData() {
-  const event = await saveEvent({
-    name: 'IMN Conference 2025',
-    date: '2025-04-10',
-    location: 'Miami, FL',
-  });
-  const seed = await getSeedData();
-  await saveContacts(event.id, seed.map(c => ({ ...c })));
-  navigate(`/event/${event.id}`);
 }
 
 // ─── Boot ───

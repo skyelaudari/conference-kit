@@ -1,4 +1,4 @@
-const CACHE_NAME = 'conferencekit-v1';
+const CACHE_NAME = 'conferencekit-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -9,7 +9,6 @@ const ASSETS = [
   './app/db.js',
   './app/render.js',
   './app/xlsx-parser.js',
-  './data/seed.json',
 ];
 
 // Install: cache all app shell assets
