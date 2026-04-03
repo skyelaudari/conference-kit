@@ -1,7 +1,7 @@
 import { route, start, navigate } from './router.js';
 import { getEvents, getEvent, saveEvent, deleteEvent, getContact, getContactsByEvent, saveContacts, clearContactsForEvent } from './db.js';
 import { html, esc, tierClass, tierLabel, initials, companyInitials, setNav } from './render.js';
-import { parseXLSX, parseCSV } from './xlsx-parser.js';
+import { parseXLSX, parseCSV, fetchGoogleSheet } from './xlsx-parser.js';
 
 let SEED_DATA = null;
 async function getSeedData() {
@@ -41,13 +41,17 @@ route('/', async (params, app) => {
       <div class="empty-state fade-in">
         <div class="empty-icon">📋</div>
         <p class="empty-text">No events yet</p>
-        <p style="color:var(--text-dim);font-size:13px;margin:8px 0 20px">Create your first event and import attendee data</p>
+        <p style="color:var(--text-dim);font-size:13px;margin:8px 0 20px">Create your first event or connect a Google Sheet</p>
         <button class="btn btn-primary" id="create-first">+ Create Event</button>
-        <div style="margin-top:16px">
-          <button class="btn btn-secondary" id="load-demo" style="font-size:13px">Load demo data</button>
+        <div style="margin-top:12px">
+          <button class="btn btn-secondary" id="connect-sheet">Connect Google Sheet</button>
+        </div>
+        <div style="margin-top:12px">
+          <button class="btn btn-secondary" id="load-demo" style="font-size:13px;opacity:0.7">Load demo data</button>
         </div>
       </div>`;
     document.getElementById('create-first').onclick = () => showEventModal();
+    document.getElementById('connect-sheet').onclick = () => showGoogleSheetModal();
     document.getElementById('load-demo').onclick = loadDemoData;
     return;
   }
@@ -58,8 +62,9 @@ route('/', async (params, app) => {
       <p>${events.length} event${events.length !== 1 ? 's' : ''}</p>
     </div>
     <div class="card-list fade-in" id="event-list"></div>
-    <div style="padding:16px 0">
+    <div style="padding:16px 0;display:flex;flex-direction:column;gap:8px">
       <button class="btn btn-primary" id="create-event" style="width:100%">+ New Event</button>
+      <button class="btn btn-secondary" id="connect-sheet" style="width:100%">Connect Google Sheet</button>
     </div>`;
 
   const list = document.getElementById('event-list');
@@ -70,7 +75,7 @@ route('/', async (params, app) => {
     div.className = 'event-card';
     div.innerHTML = `
       <div class="event-name">${esc(ev.name)}</div>
-      <div class="event-date">${esc(ev.date || 'No date set')}</div>
+      <div class="event-date">${esc(formatDateRange(ev.date, ev.endDate))}${ev.location ? ' · ' + esc(ev.location) : ''}</div>
       <div class="event-stats">
         <span><span class="event-stat-value">${contacts.length}</span> contacts</span>
         <span><span class="event-stat-value">${companies.size}</span> companies</span>
@@ -80,6 +85,7 @@ route('/', async (params, app) => {
   }
 
   document.getElementById('create-event').onclick = () => showEventModal();
+  document.getElementById('connect-sheet').onclick = () => showGoogleSheetModal();
 });
 
 // ─── Event Detail ───
@@ -102,7 +108,7 @@ route('/event/:id', async ({ id }, app) => {
     else tiers['Tier 3'].push(c);
   });
 
-  let viewMode = 'people'; // 'people' | 'companies'
+  let viewMode = 'people';
   let searchQuery = '';
   let tierFilter = 'all';
 
@@ -119,11 +125,16 @@ route('/event/:id', async ({ id }, app) => {
       return !q || name.toLowerCase().includes(q) || companies[name].some(c => c.name?.toLowerCase().includes(q));
     });
 
+    const eventLinks = [];
+    if (event.website) eventLinks.push(`<a href="${esc(event.website)}" target="_blank" rel="noopener" style="color:var(--accent);font-size:13px;text-decoration:none">Website</a>`);
+    if (event.agendaUrl) eventLinks.push(`<a href="${esc(event.agendaUrl)}" target="_blank" rel="noopener" style="color:var(--accent);font-size:13px;text-decoration:none">Agenda</a>`);
+
     app.innerHTML = `
       <button class="back-btn" id="back">← Events</button>
       <div class="page-header" style="padding-top:4px">
         <h1>${esc(event.name)}</h1>
-        <p>${esc(event.date || '')}${event.location ? ' · ' + esc(event.location) : ''}</p>
+        <p>${esc(formatDateRange(event.date, event.endDate))}${event.location ? ' · ' + esc(event.location) : ''}</p>
+        ${eventLinks.length ? `<div style="margin-top:4px;display:flex;gap:12px">${eventLinks.join('')}</div>` : ''}
       </div>
       <div class="search-container">
         <div class="search-wrapper">
@@ -173,7 +184,6 @@ route('/event/:id', async ({ id }, app) => {
         <button class="btn btn-danger" id="delete-btn">Delete</button>
       </div>`;
 
-    // Bind events
     document.getElementById('back').onclick = () => navigate('/');
     document.getElementById('evt-search').oninput = (e) => { searchQuery = e.target.value; render(); };
     document.getElementById('evt-search').focus();
@@ -225,10 +235,10 @@ route('/event/:eventId/person/:id', async ({ eventId, id }, app) => {
       </div>
     </div>
 
-    ${section('Crib Equity Angle', contact.cribEquityAngle)}
+    ${section('Talking Points', contact.talkingPoints)}
     ${section('Role Context', contact.roleContext)}
-    ${section('RE / Structured Finance', contact.reParticipation)}
-    ${section('Company Overview', contact.companyDescription)}
+    ${section('Industry Context', contact.industryContext)}
+    ${section('Company Overview', contact.companyOverview)}
   `;
 
   document.getElementById('back').onclick = () => navigate(`/event/${eventId}`);
@@ -243,9 +253,9 @@ route('/event/:eventId/company/:name', async ({ eventId, name }, app) => {
   const companyContacts = allContacts.filter(c => c.company === name);
   if (companyContacts.length === 0) return navigate(`/event/${eventId}`);
 
-  const desc = companyContacts[0].companyDescription;
-  const reParticipation = companyContacts[0].reParticipation;
-  const angle = companyContacts[0].cribEquityAngle;
+  const overview = companyContacts[0].companyOverview;
+  const industry = companyContacts[0].industryContext;
+  const talking = companyContacts[0].talkingPoints;
 
   app.innerHTML = `
     <button class="back-btn" id="back">← ${esc(event?.name || 'Back')}</button>
@@ -255,9 +265,9 @@ route('/event/:eventId/company/:name', async ({ eventId, name }, app) => {
       <div class="people-count">${companyContacts.length} contact${companyContacts.length !== 1 ? 's' : ''} at this event</div>
     </div>
 
-    ${section('Company Overview', desc)}
-    ${section('Crib Equity Angle', angle)}
-    ${section('RE / Structured Finance', reParticipation)}
+    ${section('Company Overview', overview)}
+    ${section('Talking Points', talking)}
+    ${section('Industry Context', industry)}
 
     <div class="info-section">
       <div class="info-section-title">People at ${esc(name)}</div>
@@ -352,7 +362,6 @@ route('/search', async (params, app) => {
 
     const input = document.getElementById('global-search');
     input.oninput = (e) => { query = e.target.value; render(); };
-    // Keep cursor at end
     input.setSelectionRange(query.length, query.length);
 
     document.querySelectorAll('#search-people .card').forEach(card => {
@@ -383,25 +392,28 @@ route('/settings', (params, app) => {
         </div>
       </div>
       <div class="info-section">
-        <div class="info-section-title">Data</div>
+        <div class="info-section-title">Getting Started</div>
         <div class="info-section-body" style="font-size:14px;color:var(--text-muted)">
-          <p>Your data lives in IndexedDB in this browser. To move data to another device, export your spreadsheet and re-import it.</p>
+          <p><strong>Option 1: Google Sheets</strong> — Create a copy of the template, fill in your data, set sharing to "Anyone with the link", and paste the URL.</p>
+          <p style="margin-top:8px"><strong>Option 2: Upload a file</strong> — Import a .xlsx or .csv file directly.</p>
         </div>
       </div>
       <div class="info-section">
-        <div class="info-section-title">Template Format</div>
+        <div class="info-section-title">Template Columns</div>
         <div class="info-section-body" style="font-size:14px;color:var(--text-muted)">
-          <p>Import .xlsx or .csv with these columns:</p>
+          <p>Your spreadsheet needs a <strong>Contacts</strong> sheet with these columns:</p>
           <ul style="margin:8px 0 0 16px;list-style:disc">
-            <li>Name</li>
-            <li>Title</li>
-            <li>Company</li>
-            <li>Outreach Tier</li>
-            <li>Company Description</li>
-            <li>Crib Equity Angle (or "Pitch")</li>
-            <li>Role Context</li>
+            <li><strong>Name</strong> — contact's full name</li>
+            <li><strong>Title</strong> — job title</li>
+            <li><strong>Company</strong> — organization</li>
+            <li><strong>Priority Tier</strong> — Tier 1/2/3</li>
+            <li><strong>Company Overview</strong> — about the company</li>
+            <li><strong>Industry Context</strong> — sector relevance</li>
+            <li><strong>Talking Points</strong> — your pitch or notes</li>
+            <li><strong>Role Context</strong> — their background</li>
           </ul>
-          <p style="margin-top:8px">Column names are matched flexibly — the importer will try to map common variations.</p>
+          <p style="margin-top:8px">Optionally add an <strong>Event Info</strong> sheet with: Event Name, Start Date, End Date, Location, Conference Website, Agenda URL.</p>
+          <p style="margin-top:8px;font-size:12px;color:var(--text-dim)">Column names are matched flexibly — the importer handles common variations.</p>
         </div>
       </div>
     </div>`;
@@ -417,6 +429,12 @@ function section(title, content) {
     </div>`;
 }
 
+function formatDateRange(start, end) {
+  if (!start) return 'No date set';
+  if (!end || start === end) return start;
+  return `${start} — ${end}`;
+}
+
 // ─── Event Modal ───
 function showEventModal(existing = null) {
   const overlay = document.createElement('div');
@@ -426,15 +444,29 @@ function showEventModal(existing = null) {
       <div class="modal-title">${existing ? 'Edit Event' : 'New Event'}</div>
       <div class="form-field">
         <label class="form-label">Event Name</label>
-        <input class="form-input" id="modal-name" placeholder="e.g. IMN Conference 2025" value="${esc(existing?.name || '')}">
+        <input class="form-input" id="modal-name" placeholder="e.g. SFVegas 2025" value="${esc(existing?.name || '')}">
       </div>
-      <div class="form-field">
-        <label class="form-label">Date</label>
-        <input class="form-input" id="modal-date" type="date" value="${existing?.date || ''}">
+      <div style="display:flex;gap:8px">
+        <div class="form-field" style="flex:1">
+          <label class="form-label">Start Date</label>
+          <input class="form-input" id="modal-date" type="date" value="${existing?.date || ''}">
+        </div>
+        <div class="form-field" style="flex:1">
+          <label class="form-label">End Date</label>
+          <input class="form-input" id="modal-end-date" type="date" value="${existing?.endDate || ''}">
+        </div>
       </div>
       <div class="form-field">
         <label class="form-label">Location</label>
-        <input class="form-input" id="modal-location" placeholder="e.g. Miami, FL" value="${esc(existing?.location || '')}">
+        <input class="form-input" id="modal-location" placeholder="e.g. Las Vegas, NV" value="${esc(existing?.location || '')}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Conference Website</label>
+        <input class="form-input" id="modal-website" type="url" placeholder="https://..." value="${esc(existing?.website || '')}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Agenda URL</label>
+        <input class="form-input" id="modal-agenda" type="url" placeholder="https://..." value="${esc(existing?.agendaUrl || '')}">
       </div>
       <div style="display:flex;gap:8px;margin-top:20px">
         <button class="btn btn-secondary" id="modal-cancel" style="flex:1">Cancel</button>
@@ -454,10 +486,77 @@ function showEventModal(existing = null) {
     const event = existing || {};
     event.name = name;
     event.date = document.getElementById('modal-date').value;
+    event.endDate = document.getElementById('modal-end-date').value;
     event.location = document.getElementById('modal-location').value.trim();
+    event.website = document.getElementById('modal-website').value.trim();
+    event.agendaUrl = document.getElementById('modal-agenda').value.trim();
     const saved = await saveEvent(event);
     overlay.remove();
     navigate(`/event/${saved.id}`);
+  };
+}
+
+// ─── Google Sheet Modal ───
+function showGoogleSheetModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-title">Connect Google Sheet</div>
+      <div class="form-field">
+        <label class="form-label">Google Sheet URL</label>
+        <input class="form-input" id="sheet-url" placeholder="Paste your Google Sheets link..." type="url">
+      </div>
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:16px">
+        The sheet must be set to <strong>"Anyone with the link can view"</strong>.
+        Use the ConferenceKit template for best results.
+      </p>
+      <div id="sheet-status" style="font-size:14px;color:var(--text-muted);margin-bottom:12px"></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" id="sheet-cancel" style="flex:1">Cancel</button>
+        <button class="btn btn-primary" id="sheet-connect" style="flex:1">Connect</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  overlay.querySelector('#sheet-url').focus();
+
+  overlay.querySelector('#sheet-cancel').onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+  overlay.querySelector('#sheet-connect').onclick = async () => {
+    const url = document.getElementById('sheet-url').value.trim();
+    if (!url) return;
+    const status = document.getElementById('sheet-status');
+    const btn = document.getElementById('sheet-connect');
+    btn.disabled = true;
+    btn.textContent = 'Loading...';
+    status.textContent = 'Fetching sheet data...';
+
+    try {
+      const { contacts, eventInfo } = await fetchGoogleSheet(url);
+
+      // Create event from sheet info or defaults
+      const event = {
+        name: eventInfo?.name || 'Imported Event',
+        date: eventInfo?.date || '',
+        endDate: eventInfo?.endDate || '',
+        location: eventInfo?.location || '',
+        website: eventInfo?.website || '',
+        agendaUrl: eventInfo?.agendaUrl || '',
+        sheetUrl: url,
+      };
+
+      const saved = await saveEvent(event);
+      await saveContacts(saved.id, contacts);
+
+      status.innerHTML = `<span style="color:#22c55e">✓ Imported ${contacts.length} contacts</span>`;
+      setTimeout(() => { overlay.remove(); navigate(`/event/${saved.id}`); }, 800);
+    } catch (e) {
+      status.textContent = `Error: ${e.message}`;
+      btn.disabled = false;
+      btn.textContent = 'Connect';
+    }
   };
 }
 
@@ -468,11 +567,27 @@ function showImportModal(eventId) {
   overlay.innerHTML = `
     <div class="modal-content">
       <div class="modal-title">Import Contacts</div>
-      <div class="import-zone" id="drop-zone">
-        <div class="import-icon">📄</div>
-        <div class="import-text">Tap to select a file</div>
-        <div class="import-hint">.xlsx or .csv</div>
-        <input type="file" id="file-input" accept=".xlsx,.csv,.xls" style="display:none">
+      <div class="tab-row" style="margin-bottom:16px">
+        <button class="tab-btn active" data-tab="file">Upload File</button>
+        <button class="tab-btn" data-tab="sheet">Google Sheet</button>
+      </div>
+      <div id="tab-file">
+        <div class="import-zone" id="drop-zone">
+          <div class="import-icon">📄</div>
+          <div class="import-text">Tap to select a file</div>
+          <div class="import-hint">.xlsx or .csv</div>
+          <input type="file" id="file-input" accept=".xlsx,.csv,.xls" style="display:none">
+        </div>
+      </div>
+      <div id="tab-sheet" style="display:none">
+        <div class="form-field">
+          <label class="form-label">Google Sheet URL</label>
+          <input class="form-input" id="import-sheet-url" placeholder="Paste your Google Sheets link..." type="url">
+        </div>
+        <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px">
+          Sheet must be shared as "Anyone with the link can view".
+        </p>
+        <button class="btn btn-primary" id="import-sheet-btn" style="width:100%">Import from Sheet</button>
       </div>
       <div id="import-status" style="margin-top:12px;font-size:14px;color:var(--text-muted)"></div>
       <div style="margin-top:16px">
@@ -481,6 +596,16 @@ function showImportModal(eventId) {
     </div>`;
 
   document.body.appendChild(overlay);
+
+  // Tab switching
+  overlay.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.onclick = () => {
+      overlay.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-file').style.display = btn.dataset.tab === 'file' ? '' : 'none';
+      document.getElementById('tab-sheet').style.display = btn.dataset.tab === 'sheet' ? '' : 'none';
+    };
+  });
 
   const dropZone = overlay.querySelector('#drop-zone');
   const fileInput = overlay.querySelector('#file-input');
@@ -496,19 +621,61 @@ function showImportModal(eventId) {
 
   fileInput.onchange = () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); };
 
+  // Google Sheet import within existing event
+  overlay.querySelector('#import-sheet-btn').onclick = async () => {
+    const url = document.getElementById('import-sheet-url').value.trim();
+    if (!url) return;
+    status.textContent = 'Fetching sheet data...';
+    try {
+      const { contacts, eventInfo } = await fetchGoogleSheet(url);
+      if (contacts.length === 0) {
+        status.textContent = 'No contacts found. Check column headers.';
+        return;
+      }
+      // Update event metadata if available
+      if (eventInfo) {
+        const event = await getEvent(eventId);
+        if (event) {
+          if (eventInfo.name && !event.name) event.name = eventInfo.name;
+          if (eventInfo.website) event.website = eventInfo.website;
+          if (eventInfo.agendaUrl) event.agendaUrl = eventInfo.agendaUrl;
+          event.sheetUrl = url;
+          await saveEvent(event);
+        }
+      }
+      await clearContactsForEvent(eventId);
+      await saveContacts(eventId, contacts);
+      status.innerHTML = `<span style="color:#22c55e">✓ Imported ${contacts.length} contacts</span>`;
+      setTimeout(() => { overlay.remove(); navigate(`/event/${eventId}`); }, 800);
+    } catch (e) {
+      status.textContent = `Error: ${e.message}`;
+    }
+  };
+
   async function handleFile(file) {
     status.textContent = 'Parsing...';
     try {
-      let contacts;
+      let result;
       if (file.name.endsWith('.csv')) {
         const text = await file.text();
-        contacts = parseCSV(text);
+        result = parseCSV(text);
       } else {
-        contacts = await parseXLSX(file);
+        result = await parseXLSX(file);
       }
+      const { contacts, eventInfo } = result;
       if (contacts.length === 0) {
         status.textContent = 'No valid contacts found. Check column headers.';
         return;
+      }
+      // Update event metadata if available from file
+      if (eventInfo) {
+        const event = await getEvent(eventId);
+        if (event) {
+          for (const [key, val] of Object.entries(eventInfo)) {
+            if (val) event[key] = val;
+          }
+          await saveEvent(event);
+        }
       }
       status.textContent = `Found ${contacts.length} contacts. Saving...`;
       await clearContactsForEvent(eventId);
@@ -538,7 +705,6 @@ async function loadDemoData() {
 renderNav();
 start();
 
-// Register service worker
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
