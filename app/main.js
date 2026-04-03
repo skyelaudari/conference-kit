@@ -2,6 +2,7 @@ import { route, start, navigate } from './router.js';
 import { getEvents, getEvent, saveEvent, deleteEvent, getContact, getContactsByEvent, saveContacts, clearContactsForEvent } from './db.js';
 import { html, esc, tierClass, tierLabel, initials, companyInitials, setNav } from './render.js';
 import { parseXLSX, parseCSV, fetchGoogleSheet } from './xlsx-parser.js';
+import { initAuth, signIn, signOut, getAccessToken, getUser, isSignedIn } from './auth.js';
 
 // Bottom nav (persistent)
 function renderNav() {
@@ -365,9 +366,29 @@ route('/search', async (params, app) => {
 // ─── Settings ───
 route('/settings', (params, app) => {
   setNav('settings');
+  const signedIn = isSignedIn();
+  const user = getUser();
   app.innerHTML = `
     <div class="page-header"><h1>Settings</h1></div>
     <div class="fade-in">
+      <div class="info-section">
+        <div class="info-section-title">Google Account</div>
+        <div class="info-section-body">
+          ${signedIn ? `
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+              <div style="width:36px;height:36px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:white;flex-shrink:0">${user?.name?.[0] || '?'}</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:14px;font-weight:600">${esc(user?.name || 'Signed in')}</div>
+                <div style="font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(user?.email || '')}</div>
+              </div>
+            </div>
+            <button class="btn btn-secondary" id="settings-signout" style="width:100%">Sign out</button>
+          ` : `
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Sign in with Google to access restricted Google Sheets.</p>
+            <button class="btn btn-secondary" id="settings-signin" style="width:100%">Sign in with Google</button>
+          `}
+        </div>
+      </div>
       <div class="info-section">
         <div class="info-section-title">About</div>
         <div class="info-section-body">
@@ -381,7 +402,7 @@ route('/settings', (params, app) => {
       <div class="info-section">
         <div class="info-section-title">Getting Started</div>
         <div class="info-section-body" style="font-size:14px;color:var(--text-muted)">
-          <p><strong>Option 1: Google Sheets</strong> — Create a copy of the template, fill in your data, set sharing to "Anyone with the link", and paste the URL.</p>
+          <p><strong>Option 1: Google Sheets</strong> — <a href="https://docs.google.com/spreadsheets/d/1rl-NP8v0fuUB5AjEAKJvPJTxmukMS57obmrjvNpT--c/edit?usp=sharing" target="_blank" style="color:var(--accent)">Copy the template</a>, fill in your data, and paste the URL.</p>
           <p style="margin-top:8px"><strong>Option 2: Upload a file</strong> — Import a .xlsx or .csv file directly.</p>
         </div>
       </div>
@@ -404,6 +425,25 @@ route('/settings', (params, app) => {
         </div>
       </div>
     </div>`;
+
+  const signinBtn = document.getElementById('settings-signin');
+  const signoutBtn = document.getElementById('settings-signout');
+  if (signinBtn) {
+    signinBtn.onclick = async () => {
+      signinBtn.disabled = true;
+      signinBtn.textContent = 'Signing in...';
+      try {
+        await signIn();
+        navigate('/settings');
+      } catch (e) {
+        signinBtn.disabled = false;
+        signinBtn.textContent = 'Sign in with Google';
+      }
+    };
+  }
+  if (signoutBtn) {
+    signoutBtn.onclick = () => { signOut(); navigate('/settings'); };
+  }
 });
 
 // ─── Helpers ───
@@ -485,19 +525,33 @@ function showEventModal(existing = null) {
 
 // ─── Google Sheet Modal ───
 function showGoogleSheetModal() {
+  const signedIn = isSignedIn();
+  const user = getUser();
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
     <div class="modal-content">
       <div class="modal-title">Connect Google Sheet</div>
+      <div id="auth-section" style="margin-bottom:16px">
+        ${signedIn ? `
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(34,197,94,0.1);border-radius:8px;margin-bottom:8px">
+            <div style="width:28px;height:28px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:white;flex-shrink:0">${user?.name?.[0] || '?'}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:600;color:#22c55e">Signed in</div>
+              <div style="font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(user?.email || '')}</div>
+            </div>
+          </div>
+          <p style="font-size:12px;color:var(--text-dim)">You can access any sheet shared with your Google account.</p>
+        ` : `
+          <button class="btn btn-secondary" id="google-signin" style="width:100%;margin-bottom:8px">Sign in with Google</button>
+          <p style="font-size:12px;color:var(--text-dim)">Sign in to access restricted sheets, or paste a public link below without signing in.</p>
+        `}
+      </div>
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Need a template? <a href="https://docs.google.com/spreadsheets/d/1rl-NP8v0fuUB5AjEAKJvPJTxmukMS57obmrjvNpT--c/edit?usp=sharing" target="_blank" style="color:var(--accent)">Copy the Google Sheets template</a></p>
       <div class="form-field">
         <label class="form-label">Google Sheet URL</label>
         <input class="form-input" id="sheet-url" placeholder="Paste your Google Sheets link..." type="url">
       </div>
-      <p style="font-size:12px;color:var(--text-dim);margin-bottom:16px">
-        The sheet must be set to <strong>"Anyone with the link can view"</strong>.
-        Use the ConferenceKit template for best results.
-      </p>
       <div id="sheet-status" style="font-size:14px;color:var(--text-muted);margin-bottom:12px"></div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-secondary" id="sheet-cancel" style="flex:1">Cancel</button>
@@ -511,6 +565,23 @@ function showGoogleSheetModal() {
   overlay.querySelector('#sheet-cancel').onclick = () => overlay.remove();
   overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
 
+  const signinBtn = overlay.querySelector('#google-signin');
+  if (signinBtn) {
+    signinBtn.onclick = async () => {
+      signinBtn.disabled = true;
+      signinBtn.textContent = 'Signing in...';
+      try {
+        await signIn();
+        overlay.remove();
+        showGoogleSheetModal();
+      } catch (e) {
+        signinBtn.disabled = false;
+        signinBtn.textContent = 'Sign in with Google';
+        document.getElementById('sheet-status').textContent = `Sign-in failed: ${e.message}`;
+      }
+    };
+  }
+
   overlay.querySelector('#sheet-connect').onclick = async () => {
     const url = document.getElementById('sheet-url').value.trim();
     if (!url) return;
@@ -521,7 +592,7 @@ function showGoogleSheetModal() {
     status.textContent = 'Fetching sheet data...';
 
     try {
-      const { contacts, eventInfo } = await fetchGoogleSheet(url);
+      const { contacts, eventInfo } = await fetchGoogleSheet(url, getAccessToken());
 
       // Create event from sheet info or defaults
       const event = {
@@ -614,7 +685,7 @@ function showImportModal(eventId) {
     if (!url) return;
     status.textContent = 'Fetching sheet data...';
     try {
-      const { contacts, eventInfo } = await fetchGoogleSheet(url);
+      const { contacts, eventInfo } = await fetchGoogleSheet(url, getAccessToken());
       if (contacts.length === 0) {
         status.textContent = 'No contacts found. Check column headers.';
         return;
@@ -678,6 +749,7 @@ function showImportModal(eventId) {
 
 // ─── Boot ───
 renderNav();
+initAuth();
 start();
 
 if ('serviceWorker' in navigator) {

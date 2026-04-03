@@ -63,21 +63,24 @@ export function parseCSV(text) {
   return { contacts: normalizeRows(rows), eventInfo: null };
 }
 
-// Google Sheets: fetch as CSV via public export URL
-export async function fetchGoogleSheet(sheetUrl) {
+// Google Sheets: fetch via Sheets API (authenticated) or public CSV export (fallback)
+export async function fetchGoogleSheet(sheetUrl, accessToken = null) {
   const id = extractSheetId(sheetUrl);
   if (!id) throw new Error('Could not parse Google Sheets URL. Make sure it\'s a valid sharing link.');
 
-  // Try fetching the Contacts sheet first, fall back to first sheet
+  // If authenticated, use the Sheets API for reliable access to restricted sheets
+  if (accessToken) {
+    return fetchSheetAuthenticated(id, accessToken);
+  }
+
+  // Fallback: public CSV export (sheet must be "Anyone with the link")
   let contacts = [];
   let eventInfo = null;
 
-  // Fetch all sheets via the spreadsheet export
   const csvUrl = `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv`;
   const eventCsvUrl = `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv&sheet=Event%20Info`;
   const contactsCsvUrl = `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv&sheet=Contacts`;
 
-  // Try to get event info
   try {
     const eventResp = await fetch(eventCsvUrl);
     if (eventResp.ok) {
@@ -86,7 +89,6 @@ export async function fetchGoogleSheet(sheetUrl) {
     }
   } catch (_) {}
 
-  // Try Contacts sheet, then fall back to default
   try {
     const contactsResp = await fetch(contactsCsvUrl);
     if (contactsResp.ok) {
@@ -98,7 +100,7 @@ export async function fetchGoogleSheet(sheetUrl) {
 
   if (contacts.length === 0) {
     const resp = await fetch(csvUrl);
-    if (!resp.ok) throw new Error('Could not fetch sheet. Make sure it\'s set to "Anyone with the link can view".');
+    if (!resp.ok) throw new Error('Could not fetch sheet. Sign in with Google to access restricted sheets, or set sharing to "Anyone with the link".');
     const text = await resp.text();
     contacts = parseCSVRaw(text);
   }
@@ -108,6 +110,82 @@ export async function fetchGoogleSheet(sheetUrl) {
   }
 
   return { contacts, eventInfo };
+}
+
+// Authenticated fetch via Google Sheets API
+async function fetchSheetAuthenticated(sheetId, token) {
+  const headers = { Authorization: `Bearer ${token}` };
+  const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=sheets.properties.title`;
+
+  const metaResp = await fetch(metaUrl, { headers });
+  if (!metaResp.ok) {
+    if (metaResp.status === 403 || metaResp.status === 404) {
+      throw new Error('Cannot access this sheet. Make sure you have view access and the URL is correct.');
+    }
+    throw new Error(`Google Sheets API error: ${metaResp.status}`);
+  }
+
+  const meta = await metaResp.json();
+  const sheetNames = meta.sheets.map(s => s.properties.title);
+
+  let contacts = [];
+  let eventInfo = null;
+
+  // Try Event Info sheet
+  if (sheetNames.includes('Event Info')) {
+    const eventUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Event%20Info?majorDimension=ROWS`;
+    const eventResp = await fetch(eventUrl, { headers });
+    if (eventResp.ok) {
+      const eventData = await eventResp.json();
+      eventInfo = parseEventInfoRows(eventData.values || []);
+    }
+  }
+
+  // Try Contacts sheet, then first sheet
+  const contactSheet = sheetNames.includes('Contacts') ? 'Contacts' : sheetNames[0];
+  const dataUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(contactSheet)}?majorDimension=ROWS`;
+  const dataResp = await fetch(dataUrl, { headers });
+  if (dataResp.ok) {
+    const data = await dataResp.json();
+    const rows = data.values || [];
+    if (rows.length >= 2) {
+      const hdrs = rows[0];
+      const records = rows.slice(1).map(row => {
+        const obj = {};
+        hdrs.forEach((h, i) => obj[h] = row[i] || '');
+        return obj;
+      });
+      contacts = normalizeRows(records);
+    }
+  }
+
+  if (contacts.length === 0) {
+    throw new Error('No contacts found. Check that the sheet has the right column headers.');
+  }
+
+  return { contacts, eventInfo };
+}
+
+function parseEventInfoRows(rows) {
+  const info = {};
+  const labelMap = {
+    'event name': 'name',
+    'start date': 'date',
+    'end date': 'endDate',
+    'location': 'location',
+    'conference website': 'website',
+    'agenda url': 'agendaUrl',
+  };
+  for (const row of rows) {
+    if (row.length >= 2) {
+      const label = row[0].toLowerCase().trim();
+      const value = row[1].trim();
+      if (labelMap[label] && value && !value.startsWith('e.g.')) {
+        info[labelMap[label]] = value;
+      }
+    }
+  }
+  return Object.keys(info).length > 0 ? info : null;
 }
 
 function parseEventInfoCSV(text) {
