@@ -1,6 +1,6 @@
 // Google OAuth via Google Identity Services (client-side only)
 const CLIENT_ID = '177526131011-1t19njd43f6h3ahe30d7jdcrltcsrvkn.apps.googleusercontent.com';
-const SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly';
+const SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/drive.metadata.readonly';
 
 let tokenClient = null;
 let accessToken = null;

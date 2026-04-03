@@ -1,7 +1,7 @@
 import { route, start, navigate } from './router.js';
 import { getEvents, getEvent, saveEvent, deleteEvent, getContact, getContactsByEvent, saveContacts, clearContactsForEvent } from './db.js';
 import { html, esc, tierClass, tierLabel, initials, companyInitials, setNav } from './render.js';
-import { parseXLSX, parseCSV, fetchGoogleSheet } from './xlsx-parser.js';
+import { parseXLSX, parseCSV, fetchGoogleSheet, searchGoogleSheets } from './xlsx-parser.js';
 import { initAuth, signIn, signOut, getAccessToken, getUser, isSignedIn } from './auth.js';
 
 // Bottom nav (persistent)
@@ -26,21 +26,43 @@ function renderNav() {
 route('/', async (params, app) => {
   setNav('events');
   const events = await getEvents();
+  const signedIn = isSignedIn();
+  const user = getUser();
 
   if (events.length === 0) {
     app.innerHTML = `
       <div class="page-header"><h1>ConferenceKit</h1><p>Your networking companion</p></div>
-      <div class="empty-state fade-in">
-        <div class="empty-icon">📋</div>
-        <p class="empty-text">No events yet</p>
-        <p style="color:var(--text-dim);font-size:13px;margin:8px 0 20px">Create your first event or connect a Google Sheet</p>
-        <button class="btn btn-primary" id="create-first">+ Create Event</button>
-        <div style="margin-top:12px">
-          <button class="btn btn-secondary" id="connect-sheet">Connect Google Sheet</button>
+      <div class="fade-in" style="padding:0 4px">
+        <div id="auth-bar" style="display:flex;align-items:center;gap:12px;padding:16px;background:rgba(255,255,255,0.04);border-radius:12px;margin-bottom:12px;cursor:pointer">
+          ${signedIn ? `
+            <div style="width:36px;height:36px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:white;flex-shrink:0">${user?.name?.[0] || '?'}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:15px;font-weight:600;color:#22c55e">Signed in</div>
+              <div style="font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(user?.email || '')}</div>
+            </div>
+          ` : `
+            <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🔑</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:15px;font-weight:600">Sign in with Google</div>
+              <div style="font-size:12px;color:var(--text-dim)">Browse and import your Google Sheets</div>
+            </div>
+          `}
         </div>
+        <div id="link-bar" style="display:flex;align-items:center;gap:12px;padding:16px;background:rgba(255,255,255,0.04);border-radius:12px;margin-bottom:12px;cursor:pointer">
+          <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🔗</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:15px;font-weight:600">Paste a link</div>
+            <div style="font-size:12px;color:var(--text-dim)">Public Google Sheet or file URL</div>
+          </div>
+        </div>
+        <p style="text-align:center;font-size:12px;color:var(--text-dim);margin-top:16px">Need a template? <a href="https://docs.google.com/spreadsheets/d/1rl-NP8v0fuUB5AjEAKJvPJTxmukMS57obmrjvNpT--c/edit?usp=sharing" target="_blank" style="color:var(--accent)">Copy the Google Sheets template</a></p>
       </div>`;
-    document.getElementById('create-first').onclick = () => showEventModal();
-    document.getElementById('connect-sheet').onclick = () => showGoogleSheetModal();
+    if (signedIn) {
+      document.getElementById('auth-bar').onclick = () => showGoogleSheetModal();
+    } else {
+      document.getElementById('auth-bar').onclick = handleHomeSignIn;
+    }
+    document.getElementById('link-bar').onclick = () => showGoogleSheetModal();
     return;
   }
 
@@ -51,8 +73,8 @@ route('/', async (params, app) => {
     </div>
     <div class="card-list fade-in" id="event-list"></div>
     <div style="padding:16px 0;display:flex;flex-direction:column;gap:8px">
-      <button class="btn btn-primary" id="create-event" style="width:100%">+ New Event</button>
-      <button class="btn btn-secondary" id="connect-sheet" style="width:100%">Connect Google Sheet</button>
+      <button class="btn btn-primary" id="connect-sheet" style="width:100%">${signedIn ? 'Import from Google Sheets' : 'Connect Google Sheet'}</button>
+      <button class="btn btn-secondary" id="create-event" style="width:100%">+ Create Empty Event</button>
     </div>`;
 
   const list = document.getElementById('event-list');
@@ -75,6 +97,20 @@ route('/', async (params, app) => {
   document.getElementById('create-event').onclick = () => showEventModal();
   document.getElementById('connect-sheet').onclick = () => showGoogleSheetModal();
 });
+
+async function handleHomeSignIn() {
+  const bar = document.getElementById('auth-bar');
+  if (!bar) return;
+  bar.style.opacity = '0.5';
+  bar.style.pointerEvents = 'none';
+  try {
+    await signIn();
+    navigate('/');
+  } catch (_) {
+    bar.style.opacity = '1';
+    bar.style.pointerEvents = 'auto';
+  }
+}
 
 // ─── Event Detail ───
 route('/event/:id', async ({ id }, app) => {
@@ -541,13 +577,25 @@ function showGoogleSheetModal() {
               <div style="font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(user?.email || '')}</div>
             </div>
           </div>
-          <p style="font-size:12px;color:var(--text-dim)">You can access any sheet shared with your Google account.</p>
         ` : `
           <button class="btn btn-secondary" id="google-signin" style="width:100%;margin-bottom:8px">Sign in with Google</button>
-          <p style="font-size:12px;color:var(--text-dim)">Sign in to access restricted sheets, or paste a public link below without signing in.</p>
+          <p style="font-size:12px;color:var(--text-dim)">Sign in to browse your Google Sheets, or paste a public link below.</p>
         `}
       </div>
-      <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Need a template? <a href="https://docs.google.com/spreadsheets/d/1rl-NP8v0fuUB5AjEAKJvPJTxmukMS57obmrjvNpT--c/edit?usp=sharing" target="_blank" style="color:var(--accent)">Copy the Google Sheets template</a></p>
+      ${signedIn ? `
+        <div class="form-field">
+          <label class="form-label">Search your sheets</label>
+          <input class="form-input" id="sheet-search" placeholder="Search by name..." type="text">
+        </div>
+        <div id="sheet-list" style="max-height:200px;overflow-y:auto;margin-bottom:12px">
+          <div style="text-align:center;padding:16px;color:var(--text-dim);font-size:13px">Loading your sheets...</div>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:12px;margin-bottom:8px">
+          <p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">Or paste a URL directly:</p>
+        </div>
+      ` : `
+        <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Need a template? <a href="https://docs.google.com/spreadsheets/d/1rl-NP8v0fuUB5AjEAKJvPJTxmukMS57obmrjvNpT--c/edit?usp=sharing" target="_blank" style="color:var(--accent)">Copy the Google Sheets template</a></p>
+      `}
       <div class="form-field">
         <label class="form-label">Google Sheet URL</label>
         <input class="form-input" id="sheet-url" placeholder="Paste your Google Sheets link..." type="url">
@@ -560,7 +608,6 @@ function showGoogleSheetModal() {
     </div>`;
 
   document.body.appendChild(overlay);
-  overlay.querySelector('#sheet-url').focus();
 
   overlay.querySelector('#sheet-cancel').onclick = () => overlay.remove();
   overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
@@ -580,6 +627,53 @@ function showGoogleSheetModal() {
         document.getElementById('sheet-status').textContent = `Sign-in failed: ${e.message}`;
       }
     };
+  }
+
+  // Sheet picker for signed-in users
+  if (signedIn) {
+    let searchTimeout = null;
+    const searchInput = overlay.querySelector('#sheet-search');
+    const listEl = overlay.querySelector('#sheet-list');
+
+    async function loadSheets(query = '') {
+      listEl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-dim);font-size:13px">Searching...</div>';
+      try {
+        const files = await searchGoogleSheets(query, getAccessToken());
+        if (files.length === 0) {
+          listEl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-dim);font-size:13px">No spreadsheets found</div>';
+          return;
+        }
+        listEl.innerHTML = '';
+        for (const file of files) {
+          const item = document.createElement('div');
+          item.style.cssText = 'padding:10px 12px;border-radius:8px;cursor:pointer;border:1px solid var(--border);margin-bottom:6px;transition:background 0.15s';
+          item.innerHTML = `
+            <div style="font-size:14px;font-weight:500;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(file.name)}</div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:2px">${new Date(file.modifiedTime).toLocaleDateString()}</div>`;
+          item.onmouseenter = () => item.style.background = 'rgba(255,255,255,0.05)';
+          item.onmouseleave = () => item.style.background = '';
+          item.onclick = () => {
+            document.getElementById('sheet-url').value = `https://docs.google.com/spreadsheets/d/${file.id}`;
+            listEl.querySelectorAll('div[data-selected]').forEach(d => { d.removeAttribute('data-selected'); d.style.borderColor = 'var(--border)'; });
+            item.setAttribute('data-selected', '1');
+            item.style.borderColor = 'var(--accent)';
+          };
+          listEl.appendChild(item);
+        }
+      } catch (e) {
+        listEl.innerHTML = `<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:13px">Error: ${esc(e.message)}</div>`;
+      }
+    }
+
+    loadSheets();
+
+    searchInput.oninput = () => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => loadSheets(searchInput.value.trim()), 300);
+    };
+    searchInput.focus();
+  } else {
+    overlay.querySelector('#sheet-url').focus();
   }
 
   overlay.querySelector('#sheet-connect').onclick = async () => {

@@ -296,6 +296,26 @@ function normalizeRows(rows) {
   })).filter(r => r.name);
 }
 
+// Search user's Google Drive for spreadsheets
+export async function searchGoogleSheets(query, accessToken) {
+  let q = "mimeType='application/vnd.google-apps.spreadsheet'";
+  if (query) {
+    q += ` and name contains '${query.replace(/'/g, "\\'")}'`;
+  }
+  const params = new URLSearchParams({
+    q,
+    orderBy: 'modifiedTime desc',
+    pageSize: '20',
+    fields: 'files(id,name,modifiedTime,owners)',
+  });
+  const resp = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!resp.ok) throw new Error(`Drive API error: ${resp.status}`);
+  const data = await resp.json();
+  return data.files || [];
+}
+
 function loadScript(src) {
   return new Promise((resolve, reject) => {
     const s = document.createElement('script');
