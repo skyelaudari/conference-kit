@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+
+  <!-- Two people connecting — left person -->
+  <circle cx="180" cy="155" r="32" fill="#3b82f6"/>
+  <path d="M130 230 Q130 195 165 190 L195 190 Q230 195 230 230 L230 240 L130 240 Z" fill="#3b82f6"/>
+
+  <!-- Right person -->
+  <circle cx="332" cy="155" r="32" fill="#60a5fa"/>
+  <path d="M282 230 Q282 195 317 190 L347 190 Q382 195 382 230 L382 240 L282 240 Z" fill="#60a5fa"/>
+
+  <!-- Connection arc between them -->
+  <path d="M220 200 Q256 170 292 200" fill="none" stroke="#93c5fd" stroke-width="6" stroke-linecap="round" stroke-dasharray="10 8"/>
+
+  <!-- Card/badge below -->
+  <rect x="116" y="270" width="280" height="160" rx="20" fill="#1e293b" stroke="#475569" stroke-width="4"/>
+
+  <!-- Lines on the card representing text -->
+  <rect x="150" y="300" width="140" height="12" rx="6" fill="#334155"/>
+  <rect x="150" y="325" width="100" height="10" rx="5" fill="#293548"/>
+  <rect x="150" y="348" width="212" height="10" rx="5" fill="#293548"/>
+  <rect x="150" y="371" width="180" height="10" rx="5" fill="#293548"/>
+  <rect x="150" y="394" width="150" height="10" rx="5" fill="#293548"/>
+
+  <!-- Small avatar circle on the card -->
+  <circle cx="340" cy="312" r="22" fill="#334155"/>
+</svg>

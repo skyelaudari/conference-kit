@@ -1,9 +1,12 @@
-const CACHE_NAME = 'conferencekit-v3';
+const CACHE_NAME = 'conferencekit-v4';
 const ASSETS = [
   './',
   './index.html',
   './styles.css',
   './manifest.json',
+  './favicon.png',
+  './icon-192.png',
+  './icon-512.png',
   './app/main.js',
   './app/router.js',
   './app/db.js',
