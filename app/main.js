@@ -56,6 +56,7 @@ route('/', async (params, app) => {
           </div>
         </div>
         <p style="text-align:center;font-size:12px;color:var(--text-dim);margin-top:16px">Need a template? <a href="https://docs.google.com/spreadsheets/d/1rl-NP8v0fuUB5AjEAKJvPJTxmukMS57obmrjvNpT--c/edit?usp=sharing" target="_blank" style="color:var(--accent)">Copy the Google Sheets template</a></p>
+        <p style="text-align:center;font-size:11px;color:var(--text-dim);margin-top:8px"><a href="privacy.html" style="color:var(--text-dim)">Privacy Policy</a></p>
       </div>`;
     if (signedIn) {
       document.getElementById('auth-bar').onclick = () => showGoogleSheetModal();
@@ -433,6 +434,7 @@ route('/settings', (params, app) => {
             All data is stored locally in your browser. Nothing is sent to any server.
             Works offline after first load.
           </p>
+          <p style="margin-top:8px;font-size:12px"><a href="privacy.html" style="color:var(--text-dim)">Privacy Policy</a></p>
         </div>
       </div>
       <div class="info-section">
