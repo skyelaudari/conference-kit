@@ -30,40 +30,62 @@ route('/', async (params, app) => {
   const user = getUser();
 
   if (events.length === 0) {
-    app.innerHTML = `
-      <div class="page-header"><h1>ConferenceKit</h1><p>Your networking companion</p></div>
-      <div class="fade-in" style="padding:0 4px">
-        <div id="auth-bar" style="display:flex;align-items:center;gap:12px;padding:16px;background:rgba(255,255,255,0.04);border-radius:12px;margin-bottom:12px;cursor:pointer">
-          ${signedIn ? `
-            <div style="width:36px;height:36px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:white;flex-shrink:0">${user?.name?.[0] || '?'}</div>
+    if (signedIn) {
+      // Signed-in empty state: show sheet picker inline
+      app.innerHTML = `
+        <div class="page-header"><h1>ConferenceKit</h1><p>Your networking companion</p></div>
+        <div class="fade-in" style="padding:0 4px">
+          <div style="display:flex;align-items:center;gap:12px;padding:16px;background:rgba(34,197,94,0.08);border-radius:12px;margin-bottom:16px">
+            <div style="width:36px;height:36px;border-radius:50%;background:#22c55e;display:flex;align-items:center;justify-content:center;font-size:16px;color:white;flex-shrink:0">&#10003;</div>
             <div style="flex:1;min-width:0">
-              <div style="font-size:15px;font-weight:600;color:#22c55e">Signed in</div>
+              <div style="font-size:15px;font-weight:600;color:#22c55e">Signed in${user?.name ? ' as ' + esc(user.name) : ''}</div>
               <div style="font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(user?.email || '')}</div>
             </div>
-          ` : `
+          </div>
+          <div class="form-field" style="margin-bottom:8px">
+            <label class="form-label">Search your Google Sheets</label>
+            <input class="form-input" id="home-sheet-search" placeholder="Search by name..." type="text">
+          </div>
+          <div id="home-sheet-list" style="max-height:280px;overflow-y:auto;margin-bottom:16px">
+            <div style="text-align:center;padding:16px;color:var(--text-dim);font-size:13px">Loading your sheets...</div>
+          </div>
+          <div style="border-top:1px solid var(--border);padding-top:12px;margin-bottom:8px">
+            <p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">Or paste a URL directly:</p>
+          </div>
+          <div class="form-field">
+            <input class="form-input" id="home-sheet-url" placeholder="Paste a Google Sheets link..." type="url">
+          </div>
+          <button class="btn btn-primary" id="home-sheet-connect" style="width:100%;margin-top:8px">Connect</button>
+          <div id="home-sheet-status" style="font-size:14px;color:var(--text-muted);margin-top:8px"></div>
+          <p style="text-align:center;font-size:12px;color:var(--text-dim);margin-top:16px">Need a template? <a href="https://docs.google.com/spreadsheets/d/1rl-NP8v0fuUB5AjEAKJvPJTxmukMS57obmrjvNpT--c/edit?usp=sharing" target="_blank" style="color:var(--accent)">Copy the Google Sheets template</a></p>
+          <p style="text-align:center;font-size:11px;color:var(--text-dim);margin-top:8px"><a href="privacy.html" style="color:var(--text-dim)">Privacy Policy</a></p>
+        </div>`;
+      setupHomeSheetPicker();
+    } else {
+      // Not signed in: show sign-in and paste link options
+      app.innerHTML = `
+        <div class="page-header"><h1>ConferenceKit</h1><p>Your networking companion</p></div>
+        <div class="fade-in" style="padding:0 4px">
+          <div id="auth-bar" style="display:flex;align-items:center;gap:12px;padding:16px;background:rgba(255,255,255,0.04);border-radius:12px;margin-bottom:12px;cursor:pointer">
             <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🔑</div>
             <div style="flex:1;min-width:0">
               <div style="font-size:15px;font-weight:600">Sign in with Google</div>
               <div style="font-size:12px;color:var(--text-dim)">Browse and import your Google Sheets</div>
             </div>
-          `}
-        </div>
-        <div id="link-bar" style="display:flex;align-items:center;gap:12px;padding:16px;background:rgba(255,255,255,0.04);border-radius:12px;margin-bottom:12px;cursor:pointer">
-          <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🔗</div>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:15px;font-weight:600">Paste a link</div>
-            <div style="font-size:12px;color:var(--text-dim)">Public Google Sheet or file URL</div>
           </div>
-        </div>
-        <p style="text-align:center;font-size:12px;color:var(--text-dim);margin-top:16px">Need a template? <a href="https://docs.google.com/spreadsheets/d/1rl-NP8v0fuUB5AjEAKJvPJTxmukMS57obmrjvNpT--c/edit?usp=sharing" target="_blank" style="color:var(--accent)">Copy the Google Sheets template</a></p>
-        <p style="text-align:center;font-size:11px;color:var(--text-dim);margin-top:8px"><a href="privacy.html" style="color:var(--text-dim)">Privacy Policy</a></p>
-      </div>`;
-    if (signedIn) {
-      document.getElementById('auth-bar').onclick = () => showGoogleSheetModal();
-    } else {
+          <div id="link-bar" style="display:flex;align-items:center;gap:12px;padding:16px;background:rgba(255,255,255,0.04);border-radius:12px;margin-bottom:12px;cursor:pointer">
+            <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🔗</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:15px;font-weight:600">Paste a link</div>
+              <div style="font-size:12px;color:var(--text-dim)">Public Google Sheet or file URL</div>
+            </div>
+          </div>
+          <p style="text-align:center;font-size:12px;color:var(--text-dim);margin-top:16px">Need a template? <a href="https://docs.google.com/spreadsheets/d/1rl-NP8v0fuUB5AjEAKJvPJTxmukMS57obmrjvNpT--c/edit?usp=sharing" target="_blank" style="color:var(--accent)">Copy the Google Sheets template</a></p>
+          <p style="text-align:center;font-size:11px;color:var(--text-dim);margin-top:8px"><a href="privacy.html" style="color:var(--text-dim)">Privacy Policy</a></p>
+        </div>`;
       document.getElementById('auth-bar').onclick = handleHomeSignIn;
+      document.getElementById('link-bar').onclick = () => showGoogleSheetModal();
     }
-    document.getElementById('link-bar').onclick = () => showGoogleSheetModal();
     return;
   }
 
@@ -106,11 +128,85 @@ async function handleHomeSignIn() {
   bar.style.pointerEvents = 'none';
   try {
     await signIn();
-    navigate('/');
+    navigate('/'); // re-render will show the inline sheet picker
   } catch (_) {
     bar.style.opacity = '1';
     bar.style.pointerEvents = 'auto';
   }
+}
+
+function setupHomeSheetPicker() {
+  let searchTimeout = null;
+  const searchInput = document.getElementById('home-sheet-search');
+  const listEl = document.getElementById('home-sheet-list');
+  const urlInput = document.getElementById('home-sheet-url');
+  const connectBtn = document.getElementById('home-sheet-connect');
+  const statusEl = document.getElementById('home-sheet-status');
+
+  async function loadSheets(query = '') {
+    listEl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-dim);font-size:13px">Searching...</div>';
+    try {
+      const files = await searchGoogleSheets(query, getAccessToken());
+      if (files.length === 0) {
+        listEl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-dim);font-size:13px">No spreadsheets found</div>';
+        return;
+      }
+      listEl.innerHTML = '';
+      for (const file of files) {
+        const item = document.createElement('div');
+        item.style.cssText = 'padding:10px 12px;border-radius:8px;cursor:pointer;border:1px solid var(--border);margin-bottom:6px;transition:background 0.15s';
+        item.innerHTML = `
+          <div style="font-size:14px;font-weight:500;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(file.name)}</div>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:2px">${new Date(file.modifiedTime).toLocaleDateString()}</div>`;
+        item.onmouseenter = () => item.style.background = 'rgba(255,255,255,0.05)';
+        item.onmouseleave = () => item.style.background = '';
+        item.onclick = () => {
+          urlInput.value = `https://docs.google.com/spreadsheets/d/${file.id}`;
+          listEl.querySelectorAll('div[data-selected]').forEach(d => { d.removeAttribute('data-selected'); d.style.borderColor = 'var(--border)'; });
+          item.setAttribute('data-selected', '1');
+          item.style.borderColor = 'var(--accent)';
+        };
+        listEl.appendChild(item);
+      }
+    } catch (e) {
+      listEl.innerHTML = `<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:13px">Error: ${esc(e.message)}</div>`;
+    }
+  }
+
+  loadSheets();
+
+  searchInput.oninput = () => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => loadSheets(searchInput.value.trim()), 300);
+  };
+
+  connectBtn.onclick = async () => {
+    const url = urlInput.value.trim();
+    if (!url) return;
+    connectBtn.disabled = true;
+    connectBtn.textContent = 'Loading...';
+    statusEl.textContent = 'Fetching sheet data...';
+    try {
+      const { contacts, eventInfo } = await fetchGoogleSheet(url, getAccessToken());
+      const event = {
+        name: eventInfo?.name || 'Imported Event',
+        date: eventInfo?.date || '',
+        endDate: eventInfo?.endDate || '',
+        location: eventInfo?.location || '',
+        website: eventInfo?.website || '',
+        agendaUrl: eventInfo?.agendaUrl || '',
+        sheetUrl: url,
+      };
+      const saved = await saveEvent(event);
+      await saveContacts(saved.id, contacts);
+      statusEl.innerHTML = `<span style="color:#22c55e">&#10003; Imported ${contacts.length} contacts</span>`;
+      setTimeout(() => navigate(`/event/${saved.id}`), 800);
+    } catch (e) {
+      statusEl.textContent = `Error: ${e.message}`;
+      connectBtn.disabled = false;
+      connectBtn.textContent = 'Connect';
+    }
+  };
 }
 
 // ─── Event Detail ───
@@ -573,7 +669,7 @@ function showGoogleSheetModal() {
       <div id="auth-section" style="margin-bottom:16px">
         ${signedIn ? `
           <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(34,197,94,0.1);border-radius:8px;margin-bottom:8px">
-            <div style="width:28px;height:28px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:white;flex-shrink:0">${user?.name?.[0] || '?'}</div>
+            <div style="width:28px;height:28px;border-radius:50%;background:#22c55e;display:flex;align-items:center;justify-content:center;font-size:14px;color:white;flex-shrink:0">&#10003;</div>
             <div style="flex:1;min-width:0">
               <div style="font-size:13px;font-weight:600;color:#22c55e">Signed in</div>
               <div style="font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(user?.email || '')}</div>
