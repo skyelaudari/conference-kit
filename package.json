@@ -1,0 +1,16 @@
+{
+  "name": "conference-kit",
+  "version": "1.0.0",
+  "description": "A mobile-first, offline-ready web app for conference networking. Search attendees, view tailored talking points, and organize contacts by event — all from your phone.",
+  "main": "sw.js",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "vitest": "^4.1.4"
+  }
+}

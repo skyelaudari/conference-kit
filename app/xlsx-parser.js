@@ -296,6 +296,9 @@ function normalizeRows(rows) {
   })).filter(r => r.name);
 }
 
+// Exported for testing
+export { extractSheetId, parseCSVLine, normalizeRows, FIELD_MAP };
+
 // Search user's Google Drive for spreadsheets
 export async function searchGoogleSheets(query, accessToken) {
   let q = "mimeType='application/vnd.google-apps.spreadsheet'";
