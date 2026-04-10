@@ -66,18 +66,18 @@ route('/', async (params, app) => {
       app.innerHTML = `
         <div class="page-header"><h1>ConferenceKit</h1><p>Your networking companion</p></div>
         <div class="fade-in" style="padding:0 4px">
-          <div id="auth-bar" style="display:flex;align-items:center;gap:12px;padding:16px;background:rgba(255,255,255,0.04);border-radius:12px;margin-bottom:12px;cursor:pointer">
-            <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🔑</div>
-            <div style="flex:1;min-width:0">
-              <div style="font-size:15px;font-weight:600">Sign in with Google</div>
-              <div style="font-size:12px;color:var(--text-dim)">Browse and import your Google Sheets</div>
-            </div>
-          </div>
           <div id="link-bar" style="display:flex;align-items:center;gap:12px;padding:16px;background:rgba(255,255,255,0.04);border-radius:12px;margin-bottom:12px;cursor:pointer">
             <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🔗</div>
             <div style="flex:1;min-width:0">
               <div style="font-size:15px;font-weight:600">Paste a link</div>
               <div style="font-size:12px;color:var(--text-dim)">Public Google Sheet or file URL</div>
+            </div>
+          </div>
+          <div id="auth-bar" style="display:flex;align-items:center;gap:12px;padding:16px;background:rgba(255,255,255,0.04);border-radius:12px;margin-bottom:12px;cursor:pointer">
+            <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🔑</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:15px;font-weight:600">Sign in with Google</div>
+              <div style="font-size:12px;color:var(--text-dim)">Browse and import your Google Sheets</div>
             </div>
           </div>
           <p style="text-align:center;font-size:12px;color:var(--text-dim);margin-top:16px">Need a template? <a href="https://docs.google.com/spreadsheets/d/1rl-NP8v0fuUB5AjEAKJvPJTxmukMS57obmrjvNpT--c/edit?usp=sharing" target="_blank" style="color:var(--accent)">Copy the Google Sheets template</a></p>
